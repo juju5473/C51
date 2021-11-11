@@ -1,0 +1,436 @@
+---
+title: "Cervical Cancer Group 21 case study"
+author: "Group 21"
+date: "03/04/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE, message = FALSE)
+```
+
+# Libraries Used 
+```{r}
+library(tidyverse)
+library(plyr)
+library(dplyr)
+library(readxl)
+library(MASS)
+library(pROC)
+library(car)
+library(ggpubr)
+library(olsrr)
+library(ResourceSelection)
+```
+
+```{r}
+setwd("~/Downloads")
+cancer <- read_excel("cervical_cancer.xls")
+head(cancer)
+```
+
+
+# Data Cleaning
+## Checking for NAs
+```{r, warning = F, message = F}
+colSums(is.na(cancer))
+```
+
+
+```{r}
+cancer %>% drop_na(ADJ_RAD,CLS_1,DIS_STA,HISTOLOG_1,MARGINS,MAXDEPTH_1,SIZE_1,FU_DATE) -> cancer 
+
+
+```
+
+
+```{r, warning = F, message = F}
+colSums(is.na(cancer))
+
+```
+
+
+```{r}
+dim(cancer)
+```
+# Converting the required columns to categorical data
+```{r}
+cancer$ADJ_RAD <- factor(cancer$ADJ_RAD)
+levels(cancer$ADJ_RAD)
+```
+
+
+
+```{r, warning = F, message = F}
+cancer$CLS_1 <- factor(cancer$CLS_1)
+cancer$CLS_1 <- revalue(cancer$CLS_1, c('negative' = '0','positive' = '1','positive' = '2'))
+levels(cancer$CLS_1)
+```
+
+
+```{r, warning = F, message = F}
+cancer$DIS_STA <- factor(cancer$DIS_STA)
+levels(cancer$DIS_STA)
+```
+
+
+```{r}
+cancer$GRAD_1 <- factor(cancer$GRAD_1)
+levels(cancer$GRAD_1)
+```
+
+
+```{r, warning = F, message = F}
+cancer$HISTOLOG_1 <- factor(cancer$HISTOLOG_1)
+levels(cancer$HISTOLOG_1)
+```
+
+
+```{r, warning = F, message = F}
+cancer$MARGINS <- factor(cancer$MARGINS)
+levels(cancer$MARGINS)
+```
+
+```{r, warning = F, message = F}
+cancer$PELLYMPH_1 <- factor(cancer$PELLYMPH_1)
+levels(cancer$PELLYMPH_1)
+
+
+```
+
+```{r, warning = F, message = F}
+cancer$SURGDATE <- as.Date(cancer$SURGDATE,format = '%Y%m%d')
+y1 <- cancer$SURGDATE
+cancer$FU_DATE <- as.Date(cancer$FU_DATE ,format = '%Y%m%d')
+y2 <- cancer$FU_DATE 
+```
+
+> Difference between the years of surgery and follow up 
+
+```{r, warning = F, message = F}
+year1 <- as.numeric(format(y1,'%Y'))
+year2 <- as.numeric(format(y2,'%Y'))
+cancer$diff <- year2 - year1
+```
+
+* No relapse : 0 
+* relapse : 1
+
+```{r, warning = F, message = F}
+cancer$relapse <- cancer$RECURRN1
+cancer$relapse <- as.character(cancer$relapse)
+cancer$relapse[is.na(cancer$relapse)] <- "0"
+```
+
+
+```{r}
+cancer$relapse[cancer$relapse != '0'] <- "1"
+cancer$relapse <- factor(cancer$relapse)
+```
+
+```{r}
+cancer$diff[is.na(cancer$diff)] = '0'
+cancer$diff <- as.numeric(cancer$diff)
+cancer$diff
+```
+
+
+```{r}
+names(cancer)
+```
+## removing unwanted variables
+```{r}
+data <- data.frame(cancer[,c(-1,-2,-12,-14)] )
+```
+
+# Initial Data Analysis
+## correlation plot
+```{r}
+#names(data)
+
+library(corrplot)
+
+data2 <- subset(data, select = c(-ADJ_RAD, -CLS_1, -DIS_STA, -GRAD_1, -HISTOLOG_1, -MARGINS, -PELLYMPH_1, -diff, -relapse))
+M <- cor(data2)
+corrplot(M, method = "circle", type = "upper")
+
+
+summary(data2)
+```
+## Plotting distribution of categorical variables
+First, we define a function 'catplot()' that takes a categorical column and displays the bar plot of the distribution 
+
+```{r, message = FALSE, warning = FALSE}
+catplot = function(var){
+ 
+ggplot(data = data) +
+geom_bar(aes(x = get(var), y = (..count..)/sum(..count..), fill = 'red'), col = 'Black',show.legend = FALSE)+  xlab(as.character(var)) + ggtitle(paste0(" Bar plot of ", as.character(var)))+
+theme_bw() + ylab("")
+  
+}
+```
+
+
+Run the same with different categorical variables.
+
+```{r, message = FALSE, warning = FALSE}
+p1 = catplot("ADJ_RAD")
+p2 = catplot("CLS_1")
+p3 = catplot("DIS_STA")
+p4 = catplot("GRAD_1")
+p5 = catplot("HISTOLOG_1")
+p6 = catplot("MARGINS")
+p7 = catplot("PELLYMPH_1")
+p8 = catplot("diff")
+
+
+gridExtra::grid.arrange(p1,p2,p3,p4, ncol = 2, nrow = 2)
+gridExtra::grid.arrange(p5,p6,p7, ncol = 2, nrow = 2)
+
+```
+# Distribution of AGE_1
+```{r}
+ggplot(data = data) +
+  geom_histogram(aes(x = AGE_1, fill = 'red'), col = 'black', show.legend = FALSE)
+
+ggplot(data = data) + 
+  geom_boxplot(aes(x = AGE_1), fill = 'skyblue' ,show.legend = FALSE)
+```
+# Distribution of Maxdept
+```{r}
+ggplot(data = data) +
+  geom_histogram(aes(x = MAXDEPTH_1, fill = 'red'), col = 'black', show.legend = FALSE)
+
+ggplot(data = data) + 
+  geom_boxplot(aes(x = MAXDEPTH_1), fill = 'skyblue' ,show.legend = FALSE)
+```
+# Distribution of Size_1
+
+```{r}
+ggplot(data = data) +
+  geom_histogram(aes(x = SIZE_1, fill = 'red'), col = 'black', show.legend = FALSE)
+
+ggplot(data = data) + 
+  geom_boxplot(aes(x = SIZE_1), fill = 'skyblue' ,show.legend = FALSE)
+```
+
+
+
+
+
+
+
+
+
+
+
+# Finding the right final model
+
+One- Hot coding for categorical data 
+```{r}
+cat_var <- data.frame(ADJ_RAD = data$ADJ_RAD,CLS_1 = data$CLS_1,DIS_STA = data$DIS_STA,GRAD_1 = data$GRAD_1,HISTOLOG_1 = data$HISTOLOG_1,MARGINS = data$MARGINS,PELLYMPH_1 = data$PELLYMPH_1,relapse = data$relapse)
+cat_one_hot <- data.frame(model.matrix(relapse~.,data=cat_var)[,-1],relapse = data$relapse)
+```
+
+min max normalization for numeric data 
+
+```{r}
+minmax <- function(x) {
+    return ((x - min(x)) / (max(x) - min(x)))
+}
+```
+
+```{r}
+
+num_var <- data.frame(AGE_1 = minmax(data$AGE_1),MAXDEPTH_1 = minmax(data$MAXDEPTH_1),SIZE_1 = minmax(data$SIZE_1),diff = minmax(data$diff))
+data <- data.frame(cat_one_hot,num_var)
+```
+
+
+# Splitting the dataset into two: training dataset and testing data set
+```{r}
+set.seed(123456789)
+ind <- sample(2,nrow(data),replace=TRUE,prob = c(0.7,0.3))
+train <- data[ind==1,]
+test  <- data[ind==2,]
+```
+
+```{r}
+colSums(is.na(train))
+```
+# Main effects
+```{r}
+m1 <- glm(relapse~., data = train ,family=binomial)
+summary(m1)
+```
+We can see that `DIS_STA2` and `MAXDEPTH_1` are important variables for predicting whether a individual will relapse or not 
+
+# Predicting 
+
+```{r}
+ptest <- predict(m1,newdata=test,type="response")
+data.frame(test$relapse,ptest)[1:10,]
+```
+```{r}
+predicted=floor(ptest+0.5) 
+ttt=table(test$relapse,predicted)
+ttt
+```
+```{r}
+error=(ttt[1,2]+ttt[2,1])/nrow(test)
+error
+```
+
+```{r}
+acc = 1 - error
+acc
+```
+2. Classifying patients according to individual risk of relapse using the original data set without the NA function
+DIS_STA1 and DIS_STA2 and MAXDEPTH_1 are important variables
+```{r}
+m2 <- glm(relapse~., data = data ,family=binomial)
+summary(m2)
+```
+```{r}
+ptest2 <- predict(m2,newdata=data,type="response")
+data.frame(data$relapse,ptest2)[1:10,]
+```
+
+
+
+
+Classifying 
+
+```{r}
+data$Category <- ptest2
+
+data$Category[data$Category >= 0 & data$Category < 0.25  ] = 'No Relapse'
+data$Category[data$Category >= 0.25 & data$Category < 0.5  ] = 'Low Relapse'
+data$Category[data$Category >= 0.5 & data$Category < 0.75  ] = 'Moderate Relapse'
+data$Category[data$Category >= 0.75 & data$Category <= 1] = 'High Relapse'
+
+```
+
+```{r}
+data$Category <- factor(data$Category, order = TRUE)
+#View(data)
+```
+
+# Step AIC
+Final Model: relapse ~ DIS_STA1 + DIS_STA2 + GRAD_12 + GRAD_13 + MAXDEPTH_1
+```{r, warning = F, message = F}
+step <- stepAIC(m1, direction = "both"); step$anova
+```
+
+# Model Validation
+## Goodness of fit
+
+```{r, warning = F, message = F}
+attach(data)
+final.model <- glm(relapse ~ DIS_STA1 + DIS_STA2 + GRAD_12 + GRAD_13 + MAXDEPTH_1, family = binomial, data = train)
+
+anova.final.model <- anova(final.model)
+anova.final.model
+```
+
+# Hosmer Lemeshow Test
+
+```{r}
+hoslem.test(final.model$y, fitted(final.model), g = 10)
+```
+
+# ROC curve
+```{r}
+test_roc <- roc(final.model$y ~ fitted(final.model), plot = TRUE, print.auc = TRUE)
+```
+
+# Studentized Deleted Residuals
+```{r}
+t <- rstudent(final.model)
+alpha <- 0.05
+n <- dim(train)[1]
+p.prime <- length(coef(final.model))
+t.crit <- qt(1-alpha/(2*n),n-p.prime-1)
+```
+
+2 index as returned after performing studentized deleted 
+residuals test, therefore, there are 2 observations is an outlying relapse 
+observation.
+```{r}
+t.crit
+which(abs(t) > t.crit)
+```
+
+# Leverage
+4 index were returned. 4 index hii's are higher than 0.5
+```{r}
+hii <- hatvalues(final.model)
+round(hii,2)
+```
+
+```{r}
+which(hii > 2*p.prime/n)
+```
+
+```{r}
+which(hii > 0.5)
+```
+
+# Influential Observations
+4 index were returned
+```{r}
+DFFITS = dffits(final.model)
+which(DFFITS >2 * sqrt(p.prime/(n)))
+```
+
+```{r}
+D = cooks.distance(final.model)
+which(D > qf(0.2, p.prime, n-p.prime))
+```
+
+```{r}
+DFFBETAS = dfbetas(final.model)
+head(DFFBETAS)
+```
+
+```{r}
+which(DFFBETAS > 2*sqrt(dim(train)))
+```
+
+# Multicollinearity
+Since there is no VIF value that exceeds 10, we can conclude that there is no indicative of serious multicollinearity
+```{r}
+VIF = vif(final.model)
+VIF
+```
+```{r}
+VIFbar = mean(VIF)
+VIFbar
+```
+
+```{r}
+t.rstandard <- t
+t.rstudent <- rstudent(final.model)
+t.inf <- influence.measures(final.model)
+#cbind(t.rstandard, t.rstudent)
+```
+
+```{r}
+# plot of final.model
+par(mfrow=c(2,2))
+plot(final.model)
+```
+
+# Shapiro Wilk Test
+```{r}
+fit.resid <- final.model$residuals
+fit.values <- final.model$fitted.values
+plot(fit.values, fit.resid)
+abline(0,0)
+
+qqnorm(fit.resid)
+qqline(fit.resid)
+
+shapiro.test(fit.resid)
+```
+
